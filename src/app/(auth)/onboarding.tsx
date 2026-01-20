@@ -43,9 +43,9 @@ export default function Onboarding() {
     });
 
     if (result.success) {
-      // If they selected doctor, go to doctor onboarding
+      // If they selected doctor, go to doctor onboarding (outside tabs)
       if (selectedRole === 'doctor') {
-        router.replace('/(doctor)/onboarding');
+        router.replace('/doctor-onboarding');
       } else {
         router.replace('/');
       }

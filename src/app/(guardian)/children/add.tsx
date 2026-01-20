@@ -6,6 +6,8 @@ import {
   ScrollView,
   TouchableOpacity,
   Alert,
+  Platform,
+  Modal,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -34,6 +36,7 @@ export default function AddChildScreen() {
 
   const [fullName, setFullName] = useState('');
   const [dateOfBirth, setDateOfBirth] = useState(new Date());
+  const [tempDate, setTempDate] = useState(new Date()); // Temporary date while picker is open
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [gender, setGender] = useState<Gender>('male');
   const [bloodGroup, setBloodGroup] = useState<string>('');
@@ -133,7 +136,10 @@ export default function AddChildScreen() {
           <Text style={styles.label}>Date of Birth</Text>
           <TouchableOpacity
             style={styles.dateButton}
-            onPress={() => setShowDatePicker(true)}
+            onPress={() => {
+              setTempDate(dateOfBirth);
+              setShowDatePicker(true);
+            }}
           >
             <Ionicons name="calendar-outline" size={20} color={colors.neutral[400]} />
             <Text style={styles.dateText}>{formatDate(dateOfBirth)}</Text>
@@ -141,15 +147,55 @@ export default function AddChildScreen() {
           </TouchableOpacity>
         </View>
 
-        {showDatePicker && (
+        {/* iOS: Use modal with Done button since spinner fires onChange on every scroll */}
+        {Platform.OS === 'ios' && (
+          <Modal
+            visible={showDatePicker}
+            transparent
+            animationType="slide"
+            onRequestClose={() => setShowDatePicker(false)}
+          >
+            <View style={styles.modalOverlay}>
+              <View style={styles.datePickerModal}>
+                <View style={styles.datePickerHeader}>
+                  <TouchableOpacity onPress={() => setShowDatePicker(false)}>
+                    <Text style={styles.datePickerCancel}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => {
+                      setDateOfBirth(tempDate);
+                      setShowDatePicker(false);
+                    }}
+                  >
+                    <Text style={styles.datePickerDone}>Done</Text>
+                  </TouchableOpacity>
+                </View>
+                <DateTimePicker
+                  value={tempDate}
+                  mode="date"
+                  display="spinner"
+                  maximumDate={new Date()}
+                  onChange={(event, selectedDate) => {
+                    if (selectedDate) {
+                      setTempDate(selectedDate);
+                    }
+                  }}
+                />
+              </View>
+            </View>
+          </Modal>
+        )}
+
+        {/* Android: Use default display which has built-in OK/Cancel */}
+        {Platform.OS === 'android' && showDatePicker && (
           <DateTimePicker
             value={dateOfBirth}
             mode="date"
-            display="spinner"
+            display="default"
             maximumDate={new Date()}
             onChange={(event, selectedDate) => {
               setShowDatePicker(false);
-              if (selectedDate) {
+              if (event.type === 'set' && selectedDate) {
                 setDateOfBirth(selectedDate);
               }
             }}
@@ -394,5 +440,33 @@ const styles = StyleSheet.create({
     padding: spacing.xl,
     borderTopWidth: 1,
     borderTopColor: colors.border.light,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+    justifyContent: 'flex-end',
+  },
+  datePickerModal: {
+    backgroundColor: colors.white,
+    borderTopLeftRadius: borderRadius.xl,
+    borderTopRightRadius: borderRadius.xl,
+    paddingBottom: spacing['2xl'],
+  },
+  datePickerHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: spacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border.light,
+  },
+  datePickerCancel: {
+    fontSize: fontSizes.base,
+    color: colors.text.secondary,
+  },
+  datePickerDone: {
+    fontSize: fontSizes.base,
+    fontWeight: fontWeights.semibold,
+    color: colors.primary[500],
   },
 });

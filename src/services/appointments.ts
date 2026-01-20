@@ -64,6 +64,7 @@ export const appointmentsService = {
       .select(`
         *,
         child:children(*),
+        guardian:profiles!appointments_guardian_id_fkey(*),
         doctor:doctor_profiles(*, profile:profiles(*)),
         slot:appointment_slots(*)
       `)
@@ -82,11 +83,41 @@ export const appointmentsService = {
     chief_complaint?: string;
     scheduled_at: string;
   }): Promise<Appointment> {
+    // Fetch snapshot data for preservation
+    const [doctorResult, guardianResult, childResult] = await Promise.all([
+      supabase
+        .from('doctor_profiles')
+        .select('profile:profiles(full_name, avatar_url)')
+        .eq('id', appointment.doctor_id)
+        .single(),
+      supabase
+        .from('profiles')
+        .select('full_name, phone')
+        .eq('id', appointment.guardian_id)
+        .single(),
+      supabase
+        .from('children')
+        .select('full_name, date_of_birth')
+        .eq('id', appointment.child_id)
+        .single(),
+    ]);
+
+    const doctorProfile = doctorResult.data?.profile as { full_name: string; avatar_url?: string } | null;
+    const guardianProfile = guardianResult.data;
+    const childData = childResult.data;
+
     const { data, error } = await supabase
       .from('appointments')
       .insert({
         ...appointment,
         status: 'pending_payment',
+        // Snapshot data for preservation
+        doctor_name: doctorProfile?.full_name || 'Unknown Doctor',
+        doctor_avatar_url: doctorProfile?.avatar_url,
+        guardian_name: guardianProfile?.full_name || 'Unknown Guardian',
+        guardian_phone: guardianProfile?.phone,
+        child_name: childData?.full_name || 'Unknown Child',
+        child_dob: childData?.date_of_birth,
       })
       .select(`
         *,
@@ -235,7 +266,7 @@ export const appointmentsService = {
       .update({ is_available: false })
       .eq('id', newSlotId);
 
-    // Create new appointment
+    // Create new appointment with preserved snapshot data
     const { data, error } = await supabase
       .from('appointments')
       .insert({
@@ -246,6 +277,13 @@ export const appointmentsService = {
         chief_complaint: oldAppointment.chief_complaint,
         scheduled_at: newScheduledAt,
         status: 'scheduled', // Already paid, so directly scheduled
+        // Preserve snapshot data from old appointment
+        doctor_name: oldAppointment.doctor_name,
+        doctor_avatar_url: oldAppointment.doctor_avatar_url,
+        guardian_name: oldAppointment.guardian_name,
+        guardian_phone: oldAppointment.guardian_phone,
+        child_name: oldAppointment.child_name,
+        child_dob: oldAppointment.child_dob,
       })
       .select(`
         *,
@@ -285,12 +323,93 @@ export const appointmentsService = {
         slot:appointment_slots(*)
       `)
       .eq('doctor_id', doctorId)
-      .in('status', ['scheduled', 'live'])
+      .in('status', ['pending_payment', 'scheduled', 'live'])
       .gte('scheduled_at', today.toISOString())
       .lt('scheduled_at', tomorrow.toISOString())
       .order('scheduled_at', { ascending: true });
 
     if (error) throw error;
     return data || [];
+  },
+
+  async getDoctorUpcomingAppointments(doctorId: string): Promise<Appointment[]> {
+    const now = new Date().toISOString();
+
+    const { data, error } = await supabase
+      .from('appointments')
+      .select(`
+        *,
+        child:children(*),
+        doctor:doctor_profiles(*, profile:profiles(*)),
+        slot:appointment_slots(*)
+      `)
+      .eq('doctor_id', doctorId)
+      .in('status', ['pending_payment', 'scheduled', 'live'])
+      .gte('scheduled_at', now)
+      .order('scheduled_at', { ascending: true });
+
+    if (error) throw error;
+    return data || [];
+  },
+
+  async getDoctorAllAppointments(doctorId: string): Promise<Appointment[]> {
+    const { data, error } = await supabase
+      .from('appointments')
+      .select(`
+        *,
+        child:children(*),
+        doctor:doctor_profiles(*, profile:profiles(*)),
+        slot:appointment_slots(*)
+      `)
+      .eq('doctor_id', doctorId)
+      .order('scheduled_at', { ascending: false });
+
+    if (error) throw error;
+    return data || [];
+  },
+
+  async getChildAppointments(childId: string): Promise<Appointment[]> {
+    const { data, error } = await supabase
+      .from('appointments')
+      .select(`
+        *,
+        child:children(*),
+        doctor:doctor_profiles(*, profile:profiles(*)),
+        slot:appointment_slots(*)
+      `)
+      .eq('child_id', childId)
+      .order('scheduled_at', { ascending: false });
+
+    if (error) throw error;
+    return data || [];
+  },
+
+  async getDoctorPatients(doctorId: string): Promise<{ child: any; guardian: any; lastVisit: string }[]> {
+    const { data, error } = await supabase
+      .from('appointments')
+      .select(`
+        child:children(*),
+        guardian:profiles!appointments_guardian_id_fkey(*),
+        scheduled_at
+      `)
+      .eq('doctor_id', doctorId)
+      .order('scheduled_at', { ascending: false });
+
+    if (error) throw error;
+
+    // Get unique children with their most recent visit
+    const patientMap = new Map<string, { child: any; guardian: any; lastVisit: string }>();
+
+    data?.forEach((appointment) => {
+      if (appointment.child && !patientMap.has(appointment.child.id)) {
+        patientMap.set(appointment.child.id, {
+          child: appointment.child,
+          guardian: appointment.guardian,
+          lastVisit: appointment.scheduled_at,
+        });
+      }
+    });
+
+    return Array.from(patientMap.values());
   },
 };

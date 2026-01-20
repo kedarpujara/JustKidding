@@ -1,0 +1,159 @@
+PRIVACY POLICY
+
+JustKidding - Pediatric Telemedicine App
+
+Last Updated: January 2026
+
+1. INTRODUCTION
+
+JustKidding ("we," "our," or "us") is a pediatric telemedicine application that enables parents and guardians to book video consultations with certified pediatricians for their children. This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our mobile application.
+
+By using JustKidding, you agree to the collection and use of information in accordance with this policy.
+
+2. INFORMATION WE COLLECT
+
+2.1 Guardian/Parent Information
+- Full name
+- Phone number (required for authentication)
+- Email address (optional)
+- Profile picture
+- Address, city, state, and pincode
+- Emergency contact information
+
+2.2 Child/Patient Information
+- Full name
+- Date of birth
+- Gender
+- Blood group
+- Height and weight
+- Known allergies
+- Chronic conditions
+- Current medications
+- Profile photo
+- Relationship to guardian
+
+2.3 Medical Information
+- Chief complaint/reason for consultation
+- Intake form responses (symptoms, medical history)
+- Consultation notes from doctors
+- Diagnosis information
+- Prescriptions and treatment plans
+- Follow-up recommendations
+
+2.4 Appointment Information
+- Scheduled consultation date and time
+- Appointment status
+- Video session data (duration, connection events)
+- Cancellation reasons (if applicable)
+
+2.5 Payment Information
+- Transaction amount
+- Payment status
+- Order and transaction identifiers
+Note: We do not store your complete card details. All payment processing is handled securely by our payment provider.
+
+2.6 Device Information
+- Push notification tokens
+- Device platform (iOS/Android)
+
+3. HOW WE USE YOUR INFORMATION
+
+We use the collected information to:
+- Authenticate your identity via phone OTP verification
+- Create and manage your account and child profiles
+- Facilitate video consultations between guardians and pediatricians
+- Process payments for consultations
+- Generate and deliver digital prescriptions
+- Send appointment reminders and notifications
+- Maintain medical records for continuity of care
+- Comply with legal and regulatory requirements
+- Improve our services and user experience
+
+4. THIRD-PARTY SERVICES
+
+We use the following third-party services to operate our app:
+
+4.1 Supabase
+- Purpose: Database, authentication, and file storage
+- Data processed: All user profiles, medical records, and authentication
+- Privacy Policy: https://supabase.com/privacy
+
+4.2 Razorpay
+- Purpose: Payment processing
+- Data processed: Payment transactions
+- Privacy Policy: https://razorpay.com/privacy/
+
+4.3 Agora
+- Purpose: Video calling functionality
+- Data processed: Video session data
+- Privacy Policy: https://www.agora.io/en/privacy-policy/
+
+4.4 Expo
+- Purpose: Push notifications
+- Data processed: Notification tokens and messages
+- Privacy Policy: https://expo.dev/privacy
+
+5. DATA STORAGE AND SECURITY
+
+5.1 Storage
+Your data is stored on secure servers provided by Supabase. Files such as profile pictures, doctor credentials, and prescriptions are stored in secure storage buckets with appropriate access controls.
+
+5.2 Security Measures
+- Phone-based authentication with OTP verification
+- Encrypted authentication tokens stored securely on your device
+- HTTPS encryption for all data transmission
+- Row-level security ensuring users can only access their own data
+- Signed URLs for secure file access
+
+5.3 Data Retention
+We retain your information for as long as your account is active or as needed to provide you services. Medical records may be retained as required by applicable healthcare regulations.
+
+6. DATA SHARING
+
+We do not sell your personal information. We share your data only:
+- With pediatricians you book consultations with (limited to information necessary for the consultation)
+- With third-party service providers as described in Section 4
+- When required by law or legal process
+- To protect the rights, property, or safety of JustKidding, our users, or others
+
+7. YOUR RIGHTS
+
+You have the right to:
+- Access your personal information
+- Correct inaccurate data
+- Request deletion of your account and associated data
+- Withdraw consent for data processing
+- Export your data
+
+To exercise these rights, please contact us using the information provided below.
+
+8. CHILDREN'S PRIVACY
+
+Our app is designed for guardians to manage healthcare for their children. We collect children's information only as provided by their guardians for the purpose of facilitating pediatric consultations. We do not knowingly collect information directly from children.
+
+9. PERMISSIONS WE REQUEST
+
+iOS:
+- Camera and microphone (for video consultations)
+- Photo library (for profile pictures)
+- Notifications (for appointment reminders)
+
+Android:
+- Camera and microphone (for video consultations)
+- Storage (for profile pictures and prescriptions)
+- Notifications (for appointment reminders)
+
+10. CHANGES TO THIS POLICY
+
+We may update this Privacy Policy from time to time. We will notify you of any changes by posting the new Privacy Policy on this page and updating the "Last Updated" date.
+
+11. CONTACT US
+
+If you have questions or concerns about this Privacy Policy or our data practices, please contact us at:
+
+Email: [Your Support Email]
+Address: [Your Business Address]
+
+---
+
+This privacy policy is intended for use with the JustKidding mobile application available on the Apple App Store and Google Play Store.

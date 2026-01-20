@@ -153,7 +153,9 @@ export default function Verify() {
 
         {DEV_MODE && (
           <View style={styles.devHint}>
-            <Text style={styles.devHintText}>Dev Mode: Use OTP 123456</Text>
+            <Text style={styles.devHintText}>
+              Dev Mode: Use phone 1234567890 or 9999999999{'\n'}with OTP 123456 to create new test accounts
+            </Text>
           </View>
         )}
 

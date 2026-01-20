@@ -1,268 +1,131 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
   TouchableOpacity,
-  Switch,
-  Alert,
-  Modal,
+  SectionList,
 } from 'react-native';
+import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
-import DateTimePicker from '@react-native-community/datetimepicker';
-import { Card, Button, Loading } from '@/components/ui';
+import { Avatar, Loading, EmptyState } from '@/components/ui';
 import { useAuthStore } from '@/stores/authStore';
-import { doctorsService } from '@/services';
-import { supabase } from '@/lib/supabase';
+import { appointmentsService, doctorsService } from '@/services';
+import { dateUtils } from '@/utils/date';
 import { colors, spacing, fontSizes, fontWeights, borderRadius } from '@/lib/theme';
-import type { DoctorAvailabilityRule } from '@/types';
+import type { Appointment } from '@/types';
 
-const DAYS_OF_WEEK = [
-  'Sunday',
-  'Monday',
-  'Tuesday',
-  'Wednesday',
-  'Thursday',
-  'Friday',
-  'Saturday',
-];
-
-const DEFAULT_SLOT_DURATION = 30; // minutes
-
-interface DayAvailability {
-  dayOfWeek: number;
-  isEnabled: boolean;
-  startTime: string;
-  endTime: string;
-}
+type TabType = 'upcoming' | 'past';
 
 export default function ScheduleScreen() {
+  const router = useRouter();
   const insets = useSafeAreaInsets();
-  const queryClient = useQueryClient();
   const { userId } = useAuthStore();
+  const [activeTab, setActiveTab] = useState<TabType>('upcoming');
 
-  const [showTimePicker, setShowTimePicker] = useState(false);
-  const [editingDay, setEditingDay] = useState<number | null>(null);
-  const [editingField, setEditingField] = useState<'start' | 'end'>('start');
-  const [tempTime, setTempTime] = useState(new Date());
-  const [availability, setAvailability] = useState<DayAvailability[]>(
-    DAYS_OF_WEEK.map((_, index) => ({
-      dayOfWeek: index,
-      isEnabled: index >= 1 && index <= 5, // Mon-Fri enabled by default
-      startTime: '09:00',
-      endTime: '17:00',
-    }))
-  );
-
-  // Get doctor profile
-  const { data: doctorProfile, isLoading: profileLoading } = useQuery({
+  const { data: doctorProfile } = useQuery({
     queryKey: ['doctorProfile', userId],
     queryFn: () => doctorsService.getDoctorByProfileId(userId!),
     enabled: !!userId,
   });
 
-  // Get existing availability rules
-  const { data: existingRules = [], isLoading: rulesLoading } = useQuery({
-    queryKey: ['availabilityRules', doctorProfile?.id],
-    queryFn: () => doctorsService.getAvailabilityRules(doctorProfile!.id),
+  const { data: allAppointments = [], isLoading } = useQuery({
+    queryKey: ['doctorAllAppointments', doctorProfile?.id],
+    queryFn: () => appointmentsService.getDoctorAllAppointments(doctorProfile!.id),
     enabled: !!doctorProfile?.id,
   });
 
-  // Load existing rules into state
-  useEffect(() => {
-    if (existingRules.length > 0) {
-      setAvailability((prev) =>
-        prev.map((day) => {
-          const existingRule = existingRules.find(
-            (r) => r.day_of_week === day.dayOfWeek
-          );
-          if (existingRule) {
-            return {
-              ...day,
-              isEnabled: existingRule.is_active,
-              startTime: existingRule.start_time,
-              endTime: existingRule.end_time,
-            };
-          }
-          return day;
-        })
-      );
-    }
-  }, [existingRules]);
+  // Split appointments into upcoming and past
+  const now = new Date();
+  const upcomingAppointments = allAppointments.filter(
+    (a) => new Date(a.scheduled_at) >= now && !['completed', 'canceled', 'no_show'].includes(a.status)
+  );
+  const pastAppointments = allAppointments.filter(
+    (a) => new Date(a.scheduled_at) < now || ['completed', 'canceled', 'no_show'].includes(a.status)
+  );
 
-  // Save availability mutation
-  const saveMutation = useMutation({
-    mutationFn: async () => {
-      if (!doctorProfile?.id) throw new Error('Doctor profile not found');
+  const displayedAppointments = activeTab === 'upcoming' ? upcomingAppointments : pastAppointments;
 
-      const promises = availability
-        .filter((day) => day.isEnabled)
-        .map((day) =>
-          doctorsService.setAvailabilityRule(doctorProfile.id, {
-            day_of_week: day.dayOfWeek,
-            start_time: day.startTime,
-            end_time: day.endTime,
-            slot_duration_minutes: DEFAULT_SLOT_DURATION,
-            is_active: true,
-          })
-        );
+  // Group appointments by date
+  const groupedAppointments = React.useMemo(() => {
+    const groups: { [key: string]: Appointment[] } = {};
 
-      await Promise.all(promises);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['availabilityRules'] });
-      Alert.alert('Success', 'Availability saved successfully');
-    },
-    onError: (error) => {
-      Alert.alert('Error', (error as Error).message);
-    },
-  });
-
-  // Generate slots mutation
-  const generateSlotsMutation = useMutation({
-    mutationFn: async () => {
-      if (!doctorProfile?.id) throw new Error('Doctor profile not found');
-
-      const now = new Date();
-      const endDate = new Date(now);
-      endDate.setDate(endDate.getDate() + 14);
-
-      // Get existing slots to avoid duplicates
-      const { data: existingSlots } = await supabase
-        .from('appointment_slots')
-        .select('start_time')
-        .eq('doctor_id', doctorProfile.id)
-        .gte('start_time', now.toISOString())
-        .lte('start_time', endDate.toISOString());
-
-      const existingTimes = new Set(
-        existingSlots?.map((s) => new Date(s.start_time).getTime()) || []
-      );
-
-      // Generate slots for the next 14 days
-      const slots = [];
-
-      for (let dayOffset = 0; dayOffset < 14; dayOffset++) {
-        const date = new Date(now);
-        date.setDate(date.getDate() + dayOffset);
-        const dayOfWeek = date.getDay();
-
-        const dayAvail = availability.find((a) => a.dayOfWeek === dayOfWeek);
-        if (!dayAvail?.isEnabled) continue;
-
-        const [startHour, startMin] = dayAvail.startTime.split(':').map(Number);
-        const [endHour, endMin] = dayAvail.endTime.split(':').map(Number);
-
-        const slotStart = new Date(date);
-        slotStart.setHours(startHour, startMin, 0, 0);
-
-        const dayEnd = new Date(date);
-        dayEnd.setHours(endHour, endMin, 0, 0);
-
-        while (slotStart < dayEnd) {
-          const slotEnd = new Date(slotStart);
-          slotEnd.setMinutes(slotEnd.getMinutes() + DEFAULT_SLOT_DURATION);
-
-          // Only add if slot is in the future and doesn't already exist
-          if (slotEnd <= dayEnd && slotStart > now && !existingTimes.has(slotStart.getTime())) {
-            slots.push({
-              doctor_id: doctorProfile.id,
-              start_time: slotStart.toISOString(),
-              end_time: slotEnd.toISOString(),
-              is_available: true,
-            });
-          }
-
-          slotStart.setMinutes(slotStart.getMinutes() + DEFAULT_SLOT_DURATION);
-        }
+    displayedAppointments.forEach((appointment) => {
+      const dateKey = dateUtils.formatDate(appointment.scheduled_at, 'yyyy-MM-dd');
+      if (!groups[dateKey]) {
+        groups[dateKey] = [];
       }
+      groups[dateKey].push(appointment);
+    });
 
-      if (slots.length === 0) {
-        return 0; // No new slots to generate
-      }
+    return Object.entries(groups)
+      .map(([date, appointments]) => ({
+        title: dateUtils.formatDate(date, 'EEEE, dd MMMM yyyy'),
+        data: appointments.sort((a, b) =>
+          new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime()
+        ),
+      }))
+      .sort((a, b) => {
+        const dateA = new Date(a.data[0].scheduled_at).getTime();
+        const dateB = new Date(b.data[0].scheduled_at).getTime();
+        return activeTab === 'upcoming' ? dateA - dateB : dateB - dateA;
+      });
+  }, [displayedAppointments, activeTab]);
 
-      // Insert only new slots
-      const { error } = await supabase.from('appointment_slots').insert(slots);
+  const statusConfig: Record<string, { color: string; bg: string; label: string }> = {
+    scheduled: { color: colors.primary[500], bg: colors.primary[100], label: 'Confirmed' },
+    live: { color: colors.secondary[500], bg: colors.secondary[100], label: 'Live' },
+    completed: { color: colors.success[500], bg: colors.success[100], label: 'Completed' },
+    canceled: { color: colors.error[500], bg: colors.error[100], label: 'Cancelled' },
+    no_show: { color: colors.error[500], bg: colors.error[100], label: 'No Show' },
+    pending_payment: { color: colors.accent[500], bg: colors.accent[100], label: 'Pending Payment' },
+  };
 
-      if (error) throw error;
+  const renderAppointment = ({ item }: { item: Appointment }) => {
+    const config = statusConfig[item.status] || statusConfig.scheduled;
 
-      return slots.length;
-    },
-    onSuccess: (count) => {
-      queryClient.invalidateQueries({ queryKey: ['slots'] });
-      if (count === 0) {
-        Alert.alert('Info', 'All slots already exist for the next 14 days');
-      } else {
-        Alert.alert('Success', `Generated ${count} new appointment slots`);
-      }
-    },
-    onError: (error) => {
-      Alert.alert('Error', (error as Error).message);
-    },
-  });
-
-  const toggleDay = (dayIndex: number) => {
-    setAvailability((prev) =>
-      prev.map((day) =>
-        day.dayOfWeek === dayIndex ? { ...day, isEnabled: !day.isEnabled } : day
-      )
+    return (
+      <TouchableOpacity
+        style={styles.appointmentCard}
+        onPress={() => router.push(`/(doctor)/appointment/${item.id}`)}
+      >
+        <View style={styles.appointmentRow}>
+          <Avatar
+            name={item.child?.full_name || 'Patient'}
+            source={item.child?.avatar_url}
+            size="md"
+          />
+          <View style={styles.appointmentInfo}>
+            <Text style={styles.patientName}>{item.child?.full_name}</Text>
+            <Text style={styles.appointmentTime}>
+              {dateUtils.formatTime(item.scheduled_at)}
+            </Text>
+            {item.chief_complaint && (
+              <Text style={styles.complaint} numberOfLines={1}>
+                {item.chief_complaint}
+              </Text>
+            )}
+          </View>
+          <View style={styles.appointmentRight}>
+            <View style={[styles.statusBadge, { backgroundColor: config.bg }]}>
+              <Text style={[styles.statusText, { color: config.color }]}>{config.label}</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={colors.neutral[400]} />
+          </View>
+        </View>
+      </TouchableOpacity>
     );
   };
 
-  const openTimePicker = (dayIndex: number, field: 'start' | 'end') => {
-    const day = availability.find((d) => d.dayOfWeek === dayIndex);
-    if (!day) return;
+  const renderSectionHeader = ({ section }: { section: { title: string } }) => (
+    <View style={styles.sectionHeader}>
+      <Text style={styles.sectionTitle}>{section.title}</Text>
+    </View>
+  );
 
-    const timeStr = field === 'start' ? day.startTime : day.endTime;
-    const [hours, minutes] = timeStr.split(':').map(Number);
-    const date = new Date();
-    date.setHours(hours, minutes, 0, 0);
-
-    setTempTime(date);
-    setEditingDay(dayIndex);
-    setEditingField(field);
-    setShowTimePicker(true);
-  };
-
-  const handleTimeChange = (event: any, selectedDate?: Date) => {
-    if (event.type === 'dismissed') {
-      setShowTimePicker(false);
-      return;
-    }
-
-    if (selectedDate && editingDay !== null) {
-      const timeStr = `${selectedDate.getHours().toString().padStart(2, '0')}:${selectedDate.getMinutes().toString().padStart(2, '0')}`;
-
-      setAvailability((prev) =>
-        prev.map((day) =>
-          day.dayOfWeek === editingDay
-            ? {
-                ...day,
-                [editingField === 'start' ? 'startTime' : 'endTime']: timeStr,
-              }
-            : day
-        )
-      );
-    }
-
-    setShowTimePicker(false);
-  };
-
-  const formatTime = (timeStr: string) => {
-    const [hours, minutes] = timeStr.split(':').map(Number);
-    const period = hours >= 12 ? 'PM' : 'AM';
-    const displayHours = hours % 12 || 12;
-    return `${displayHours}:${minutes.toString().padStart(2, '0')} ${period}`;
-  };
-
-  if (profileLoading || rulesLoading) {
-    return <Loading fullScreen />;
-  }
-
-  if (!doctorProfile) {
+  if (!doctorProfile && !isLoading) {
     return (
       <View style={[styles.container, { paddingTop: insets.top }]}>
         <View style={styles.header}>
@@ -271,9 +134,6 @@ export default function ScheduleScreen() {
         <View style={styles.errorContainer}>
           <Ionicons name="alert-circle-outline" size={48} color={colors.error[500]} />
           <Text style={styles.errorText}>Doctor profile not found</Text>
-          <Text style={styles.errorSubtext}>
-            Please complete your profile setup first
-          </Text>
         </View>
       </View>
     );
@@ -283,107 +143,58 @@ export default function ScheduleScreen() {
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.header}>
         <Text style={styles.title}>Schedule</Text>
+        <TouchableOpacity
+          style={styles.availabilityButton}
+          onPress={() => router.push('/(doctor)/availability')}
+        >
+          <Ionicons name="settings-outline" size={20} color={colors.primary[600]} />
+          <Text style={styles.availabilityText}>Set Availability</Text>
+        </TouchableOpacity>
       </View>
 
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
-        <Text style={styles.sectionTitle}>Set Your Availability</Text>
-        <Text style={styles.sectionSubtitle}>
-          Choose which days and times you're available for consultations
-        </Text>
+      {/* Tabs */}
+      <View style={styles.tabContainer}>
+        <TouchableOpacity
+          style={[styles.tab, activeTab === 'upcoming' && styles.activeTab]}
+          onPress={() => setActiveTab('upcoming')}
+        >
+          <Text style={[styles.tabText, activeTab === 'upcoming' && styles.activeTabText]}>
+            Upcoming ({upcomingAppointments.length})
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.tab, activeTab === 'past' && styles.activeTab]}
+          onPress={() => setActiveTab('past')}
+        >
+          <Text style={[styles.tabText, activeTab === 'past' && styles.activeTabText]}>
+            Past ({pastAppointments.length})
+          </Text>
+        </TouchableOpacity>
+      </View>
 
-        <Card style={styles.availabilityCard}>
-          {availability.map((day) => (
-            <View
-              key={day.dayOfWeek}
-              style={[
-                styles.dayRow,
-                day.dayOfWeek === 6 && styles.dayRowLast,
-              ]}
-            >
-              <View style={styles.dayInfo}>
-                <Switch
-                  value={day.isEnabled}
-                  onValueChange={() => toggleDay(day.dayOfWeek)}
-                  trackColor={{
-                    false: colors.neutral[200],
-                    true: colors.primary[400],
-                  }}
-                  thumbColor={day.isEnabled ? colors.primary[600] : colors.neutral[400]}
-                />
-                <Text
-                  style={[
-                    styles.dayName,
-                    !day.isEnabled && styles.dayNameDisabled,
-                  ]}
-                >
-                  {DAYS_OF_WEEK[day.dayOfWeek]}
-                </Text>
-              </View>
-
-              {day.isEnabled && (
-                <View style={styles.timeRange}>
-                  <TouchableOpacity
-                    style={styles.timeButton}
-                    onPress={() => openTimePicker(day.dayOfWeek, 'start')}
-                  >
-                    <Text style={styles.timeText}>{formatTime(day.startTime)}</Text>
-                  </TouchableOpacity>
-                  <Text style={styles.timeSeparator}>to</Text>
-                  <TouchableOpacity
-                    style={styles.timeButton}
-                    onPress={() => openTimePicker(day.dayOfWeek, 'end')}
-                  >
-                    <Text style={styles.timeText}>{formatTime(day.endTime)}</Text>
-                  </TouchableOpacity>
-                </View>
-              )}
-            </View>
-          ))}
-        </Card>
-
-        <Card style={styles.infoCard}>
-          <View style={styles.infoRow}>
-            <Ionicons name="time-outline" size={20} color={colors.primary[600]} />
-            <Text style={styles.infoText}>
-              Slot duration: {DEFAULT_SLOT_DURATION} minutes
-            </Text>
-          </View>
-          <View style={styles.infoRow}>
-            <Ionicons name="calendar-outline" size={20} color={colors.primary[600]} />
-            <Text style={styles.infoText}>
-              Slots will be generated for the next 14 days
-            </Text>
-          </View>
-        </Card>
-
-        <View style={styles.buttonContainer}>
-          <Button
-            title="Save Availability"
-            onPress={() => saveMutation.mutate()}
-            loading={saveMutation.isPending}
-            variant="outline"
-            style={styles.button}
-          />
-          <Button
-            title="Generate Slots"
-            onPress={() => generateSlotsMutation.mutate()}
-            loading={generateSlotsMutation.isPending}
-            style={styles.button}
+      {isLoading ? (
+        <Loading />
+      ) : displayedAppointments.length === 0 ? (
+        <View style={styles.emptyContainer}>
+          <EmptyState
+            icon="calendar-outline"
+            title={activeTab === 'upcoming' ? 'No upcoming appointments' : 'No past appointments'}
+            description={
+              activeTab === 'upcoming'
+                ? 'When patients book appointments, they will appear here.'
+                : 'Your completed appointments will appear here.'
+            }
           />
         </View>
-      </ScrollView>
-
-      {showTimePicker && (
-        <DateTimePicker
-          value={tempTime}
-          mode="time"
-          is24Hour={false}
-          display="spinner"
-          onChange={handleTimeChange}
+      ) : (
+        <SectionList
+          sections={groupedAppointments}
+          renderItem={renderAppointment}
+          renderSectionHeader={renderSectionHeader}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={styles.listContent}
+          showsVerticalScrollIndicator={false}
+          stickySectionHeadersEnabled={false}
         />
       )}
     </View>
@@ -396,6 +207,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background.secondary,
   },
   header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.lg,
     backgroundColor: colors.white,
@@ -407,92 +221,104 @@ const styles = StyleSheet.create({
     fontWeight: fontWeights.bold,
     color: colors.text.primary,
   },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    padding: spacing.lg,
-    paddingBottom: spacing['3xl'],
-  },
-  sectionTitle: {
-    fontSize: fontSizes.lg,
-    fontWeight: fontWeights.semibold,
-    color: colors.text.primary,
-    marginBottom: spacing.xs,
-  },
-  sectionSubtitle: {
-    fontSize: fontSizes.sm,
-    color: colors.text.secondary,
-    marginBottom: spacing.lg,
-  },
-  availabilityCard: {
-    padding: 0,
-    overflow: 'hidden',
-  },
-  dayRow: {
+  availabilityButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.lg,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border.light,
-  },
-  dayRowLast: {
-    borderBottomWidth: 0,
-  },
-  dayInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  dayName: {
-    fontSize: fontSizes.base,
-    fontWeight: fontWeights.medium,
-    color: colors.text.primary,
-    marginLeft: spacing.md,
-  },
-  dayNameDisabled: {
-    color: colors.text.tertiary,
-  },
-  timeRange: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  timeButton: {
-    paddingVertical: spacing.xs,
-    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
     backgroundColor: colors.primary[50],
-    borderRadius: borderRadius.md,
+    borderRadius: borderRadius.lg,
+    gap: spacing.xs,
   },
-  timeText: {
+  availabilityText: {
     fontSize: fontSizes.sm,
     fontWeight: fontWeights.medium,
     color: colors.primary[600],
   },
-  timeSeparator: {
-    fontSize: fontSizes.sm,
-    color: colors.text.tertiary,
-    marginHorizontal: spacing.xs,
-  },
-  infoCard: {
-    marginTop: spacing.lg,
-  },
-  infoRow: {
+  tabContainer: {
     flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: spacing.sm,
-  },
-  infoText: {
-    fontSize: fontSizes.sm,
-    color: colors.text.secondary,
-    marginLeft: spacing.sm,
-  },
-  buttonContainer: {
-    marginTop: spacing.xl,
+    backgroundColor: colors.white,
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.md,
     gap: spacing.md,
   },
-  button: {
-    width: '100%',
+  tab: {
+    flex: 1,
+    paddingVertical: spacing.sm,
+    alignItems: 'center',
+    borderRadius: borderRadius.lg,
+    backgroundColor: colors.neutral[100],
+  },
+  activeTab: {
+    backgroundColor: colors.primary[500],
+  },
+  tabText: {
+    fontSize: fontSizes.sm,
+    fontWeight: fontWeights.medium,
+    color: colors.text.secondary,
+  },
+  activeTabText: {
+    color: colors.white,
+  },
+  listContent: {
+    padding: spacing.lg,
+    paddingBottom: spacing['3xl'],
+  },
+  sectionHeader: {
+    paddingVertical: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  sectionTitle: {
+    fontSize: fontSizes.sm,
+    fontWeight: fontWeights.semibold,
+    color: colors.text.secondary,
+  },
+  appointmentCard: {
+    backgroundColor: colors.white,
+    borderRadius: borderRadius.lg,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  appointmentRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  appointmentInfo: {
+    flex: 1,
+    marginLeft: spacing.md,
+  },
+  patientName: {
+    fontSize: fontSizes.base,
+    fontWeight: fontWeights.semibold,
+    color: colors.text.primary,
+  },
+  appointmentTime: {
+    fontSize: fontSizes.sm,
+    color: colors.text.secondary,
+    marginTop: spacing.xs,
+  },
+  complaint: {
+    fontSize: fontSizes.xs,
+    color: colors.text.tertiary,
+    marginTop: spacing.xs,
+  },
+  appointmentRight: {
+    alignItems: 'flex-end',
+    gap: spacing.sm,
+  },
+  statusBadge: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: borderRadius.md,
+  },
+  statusText: {
+    fontSize: fontSizes.xs,
+    fontWeight: fontWeights.medium,
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    padding: spacing.xl,
   },
   errorContainer: {
     flex: 1,
@@ -505,11 +331,5 @@ const styles = StyleSheet.create({
     fontWeight: fontWeights.semibold,
     color: colors.text.primary,
     marginTop: spacing.lg,
-  },
-  errorSubtext: {
-    fontSize: fontSizes.base,
-    color: colors.text.secondary,
-    marginTop: spacing.sm,
-    textAlign: 'center',
   },
 });

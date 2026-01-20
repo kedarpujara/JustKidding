@@ -1,8 +1,15 @@
 import * as Notifications from 'expo-notifications';
-import * as Device from 'expo-device';
 import { Platform } from 'react-native';
 import { supabase } from '@/lib/supabase';
 import type { NotificationJob } from '@/types';
+
+// Lazy load expo-device to avoid crashes in Expo Go
+let Device: typeof import('expo-device') | null = null;
+try {
+  Device = require('expo-device');
+} catch {
+  // expo-device not available in Expo Go
+}
 
 // Configure notification handling
 Notifications.setNotificationHandler({
@@ -15,7 +22,7 @@ Notifications.setNotificationHandler({
 
 export const notificationsService = {
   async registerForPushNotifications(): Promise<string | null> {
-    if (!Device.isDevice) {
+    if (!Device?.isDevice) {
       console.log('Push notifications only work on physical devices');
       return null;
     }

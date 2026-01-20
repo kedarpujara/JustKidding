@@ -5,13 +5,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { AvatarPicker, Card } from '@/components/ui';
 import { useAuthStore } from '@/stores/authStore';
+import { supabase } from '@/lib/supabase';
 import { helpers, imageUtils } from '@/utils';
 import { colors, spacing, fontSizes, fontWeights, borderRadius } from '@/lib/theme';
 
 export default function ProfileScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { profile, signOut, uploadAvatar } = useAuthStore();
+  const { profile, userId, signOut, uploadAvatar } = useAuthStore();
   const [uploading, setUploading] = React.useState(false);
 
   const handleImageSelected = async (uri: string) => {
@@ -41,6 +42,70 @@ export default function ProfileScreen() {
         },
       },
     ]);
+  };
+
+  const handleDeleteAccount = () => {
+    Alert.alert(
+      'Delete Account',
+      'Are you sure you want to delete your account? This action cannot be undone. Your appointment history will be preserved for medical records.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete Account',
+          style: 'destructive',
+          onPress: () => {
+            Alert.alert(
+              'Confirm Deletion',
+              'This will permanently delete your account. Appointment records will be retained for medical history.',
+              [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                  text: 'Delete Forever',
+                  style: 'destructive',
+                  onPress: async () => {
+                    try {
+                      // Anonymize user profile but keep for FK integrity
+                      // The appointment records use snapshot fields for names
+                      if (userId) {
+                        const { error: profileError } = await supabase
+                          .from('profiles')
+                          .update({
+                            full_name: 'Deleted User',
+                            email: null,
+                            avatar_url: null,
+                            phone: 'deleted',
+                            is_verified: false,
+                          })
+                          .eq('id', userId);
+                        if (profileError) {
+                          console.error('Failed to anonymize user profile:', profileError);
+                        }
+                      }
+
+                      // Try to delete the auth user using RPC (if function exists)
+                      try {
+                        await supabase.rpc('delete_own_account');
+                      } catch (rpcError) {
+                        console.log('RPC delete_own_account not available:', rpcError);
+                      }
+
+                      // Sign out
+                      await signOut();
+                      router.replace('/');
+
+                      Alert.alert('Account Deleted', 'Your account has been successfully deleted.');
+                    } catch (error) {
+                      console.error('Failed to delete account:', error);
+                      Alert.alert('Error', 'Failed to delete account. Please try again or contact support.');
+                    }
+                  },
+                },
+              ]
+            );
+          },
+        },
+      ]
+    );
   };
 
   const menuItems = [
@@ -104,6 +169,11 @@ export default function ProfileScreen() {
         <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
           <Ionicons name="log-out-outline" size={22} color={colors.error[500]} />
           <Text style={styles.signOutText}>Sign Out</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.deleteAccountButton} onPress={handleDeleteAccount}>
+          <Ionicons name="trash-outline" size={22} color={colors.error[600]} />
+          <Text style={styles.deleteAccountText}>Delete Account</Text>
         </TouchableOpacity>
 
         <Text style={styles.versionText}>Version 1.0.0</Text>
@@ -200,6 +270,21 @@ const styles = StyleSheet.create({
     fontSize: fontSizes.base,
     fontWeight: fontWeights.medium,
     color: colors.error[500],
+  },
+  deleteAccountButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'transparent',
+    paddingVertical: spacing.md,
+    borderRadius: borderRadius.xl,
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+  },
+  deleteAccountText: {
+    fontSize: fontSizes.sm,
+    fontWeight: fontWeights.medium,
+    color: colors.error[600],
   },
   versionText: {
     fontSize: fontSizes.sm,

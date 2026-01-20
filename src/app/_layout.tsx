@@ -67,6 +67,7 @@ export default function RootLayout() {
         <Stack.Screen name="(guardian)" />
         <Stack.Screen name="(doctor)" />
         <Stack.Screen name="(admin)" />
+        <Stack.Screen name="doctor-onboarding" options={{ animation: 'slide_from_right' }} />
       </Stack>
     </QueryClientProvider>
   );

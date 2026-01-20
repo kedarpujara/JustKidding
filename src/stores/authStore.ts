@@ -4,7 +4,7 @@ import { imageUtils } from '@/utils';
 import type { Profile, UserRole } from '@/types';
 
 const DEV_MODE = process.env.EXPO_PUBLIC_DEV_MODE === 'true';
-const TEST_OTP = '123456';
+const TEST_OTP = '123456'; // In dev mode, any phone number can use this OTP to bypass
 
 interface AuthState {
   isLoading: boolean;
@@ -13,6 +13,7 @@ interface AuthState {
   profile: Profile | null;
   role: UserRole | null;
   error: string | null;
+  pendingPhone: string | null; // Phone number from OTP verification, used for profile creation
 
   // Actions
   initialize: () => Promise<void>;
@@ -33,6 +34,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   profile: null,
   role: null,
   error: null,
+  pendingPhone: null,
 
   initialize: async () => {
     try {
@@ -101,15 +103,46 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     try {
       set({ isLoading: true, error: null });
 
-      const formattedPhone = phone.startsWith('+') ? phone : `+91${phone}`;
+      const cleanPhone = phone.replace(/\D/g, '').slice(-10); // Get last 10 digits
+      const formattedPhone = phone.startsWith('+') ? phone : `+91${cleanPhone}`;
 
-      // In dev mode without Twilio, OTP verification won't work
-      // Users should use devLogin with test users instead
+      // In dev mode, allow any phone number to bypass OTP with test code
       if (DEV_MODE && otp === TEST_OTP) {
-        // This is a hint for developers - real OTP won't work without Twilio
-        throw new Error('Phone OTP requires Twilio setup. Please use the Dev Login screen with test users for development.');
+        // Create a test email from the phone number for dev auth
+        // Using example.com which is an IANA-reserved domain for testing
+        const testEmail = `testuser${cleanPhone}@example.com`;
+        const testPassword = 'TestPass123!';
+
+        // Try to sign in first, if fails then sign up
+        let { data, error } = await supabase.auth.signInWithPassword({
+          email: testEmail,
+          password: testPassword,
+        });
+
+        if (error?.message?.includes('Invalid login credentials')) {
+          // User doesn't exist, create them
+          const signUpResult = await supabase.auth.signUp({
+            email: testEmail,
+            password: testPassword,
+            options: {
+              data: { phone: formattedPhone },
+            },
+          });
+          data = signUpResult.data;
+          error = signUpResult.error;
+        }
+
+        if (error) throw error;
+
+        if (data?.user) {
+          set({ userId: data.user.id, isAuthenticated: true, pendingPhone: formattedPhone });
+          await get().fetchProfile();
+        }
+
+        return { success: true };
       }
 
+      // For non-test numbers, use real OTP verification
       const { data, error } = await supabase.auth.verifyOtp({
         phone: formattedPhone,
         token: otp,
@@ -119,7 +152,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       if (error) throw error;
 
       if (data.user) {
-        set({ userId: data.user.id, isAuthenticated: true });
+        set({ userId: data.user.id, isAuthenticated: true, pendingPhone: formattedPhone });
         await get().fetchProfile();
       }
 
@@ -170,6 +203,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         userId: null,
         profile: null,
         role: null,
+        pendingPhone: null,
       });
     } catch (error) {
       set({ error: (error as Error).message });
@@ -205,25 +239,34 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   updateProfile: async (updates: Partial<Profile>) => {
-    const { userId } = get();
+    const { userId, pendingPhone } = get();
     if (!userId) return { success: false, error: 'Not authenticated' };
 
     try {
       set({ isLoading: true, error: null });
 
+      // Include pending phone if no phone is provided and we have one stored
+      const profileData: Record<string, unknown> = {
+        id: userId,
+        ...updates,
+        updated_at: new Date().toISOString(),
+      };
+
+      // If no phone in updates and we have a pending phone, include it
+      if (!updates.phone && pendingPhone) {
+        profileData.phone = pendingPhone;
+      }
+
       const { data, error } = await supabase
         .from('profiles')
-        .upsert({
-          id: userId,
-          ...updates,
-          updated_at: new Date().toISOString(),
-        })
+        .upsert(profileData)
         .select()
         .single();
 
       if (error) throw error;
 
-      set({ profile: data, role: data.role });
+      // Clear pending phone after successful profile creation
+      set({ profile: data, role: data.role, pendingPhone: null });
       return { success: true };
     } catch (error) {
       const message = (error as Error).message;
@@ -244,17 +287,35 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const folderPrefix = role === 'doctor' ? 'doctors' : 'guardians';
       const fileName = `${folderPrefix}/${userId}/${Date.now()}.jpg`;
 
-      // Convert file to ArrayBuffer (fetch().blob() doesn't work in React Native)
-      const arrayBuffer = await imageUtils.fileToArrayBuffer(uri);
+      // Get session token for direct upload
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData?.session?.access_token;
 
-      const { error: uploadError } = await supabase.storage
-        .from('avatars')
-        .upload(fileName, arrayBuffer, {
-          contentType: 'image/jpeg',
-          upsert: true,
-        });
+      if (token) {
+        // Use efficient direct upload (doesn't load file into memory)
+        const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL!;
+        const uploadResult = await imageUtils.uploadToSupabase(
+          uri,
+          supabaseUrl,
+          'avatars',
+          fileName,
+          token
+        );
 
-      if (uploadError) throw uploadError;
+        if (!uploadResult.success) {
+          throw new Error(uploadResult.error || 'Upload failed');
+        }
+      } else {
+        // Fallback to ArrayBuffer method if no token
+        const arrayBuffer = await imageUtils.fileToArrayBuffer(uri);
+        const { error: uploadError } = await supabase.storage
+          .from('avatars')
+          .upload(fileName, arrayBuffer, {
+            contentType: 'image/jpeg',
+            upsert: true,
+          });
+        if (uploadError) throw uploadError;
+      }
 
       const { data } = supabase.storage.from('avatars').getPublicUrl(fileName);
 

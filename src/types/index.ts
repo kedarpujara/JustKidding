@@ -24,6 +24,11 @@ export interface GuardianProfile {
   created_at: string;
 }
 
+export interface DoctorStateRegistration {
+  state: string;
+  registration_number: string;
+}
+
 export interface DoctorProfile {
   id: string;
   profile_id: string;
@@ -37,6 +42,11 @@ export interface DoctorProfile {
   verification_status: 'pending' | 'approved' | 'rejected';
   verification_notes?: string;
   documents_url?: string[];
+  state_registrations?: DoctorStateRegistration[];
+  mbbs_institute?: string;
+  mbbs_institute_other?: string;
+  md_institute?: string;
+  md_institute_other?: string;
   created_at: string;
   updated_at: string;
 }
@@ -117,8 +127,16 @@ export interface Appointment {
   cancellation_reason?: string;
   created_at: string;
   updated_at: string;
-  // Joined fields
+  // Snapshot fields (preserved even if accounts are deleted)
+  doctor_name?: string;
+  doctor_avatar_url?: string;
+  guardian_name?: string;
+  guardian_phone?: string;
+  child_name?: string;
+  child_dob?: string;
+  // Joined fields (may be null if accounts deleted)
   child?: Child;
+  guardian?: Profile;
   doctor?: DoctorProfile & { profile: Profile };
   slot?: AppointmentSlot;
 }

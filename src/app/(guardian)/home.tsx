@@ -244,20 +244,23 @@ const AppointmentCard: React.FC<AppointmentCardProps> = ({
     no_show: 'error',
   } as const;
 
+  // Use snapshot fallbacks for deleted accounts
+  const doctorName = appointment.doctor?.profile?.full_name || appointment.doctor_name || 'Doctor';
+  const doctorAvatar = appointment.doctor?.profile?.avatar_url || appointment.doctor_avatar_url;
+  const childName = appointment.child?.full_name || appointment.child_name || 'Patient';
+
   return (
     <Card style={styles.appointmentCard} onPress={onPress}>
       <View style={styles.appointmentHeader}>
         <Avatar
-          name={appointment.doctor?.profile?.full_name || 'Doctor'}
-          source={appointment.doctor?.profile?.avatar_url}
+          name={doctorName}
+          source={doctorAvatar}
           size="md"
         />
         <View style={styles.appointmentInfo}>
-          <Text style={styles.doctorName}>
-            {appointment.doctor?.profile?.full_name}
-          </Text>
+          <Text style={styles.doctorName}>{doctorName}</Text>
           <Text style={styles.specialization}>
-            {appointment.doctor?.specialization}
+            {appointment.doctor?.specialization || 'Pediatrician'}
           </Text>
         </View>
         <Badge
@@ -273,9 +276,7 @@ const AppointmentCard: React.FC<AppointmentCardProps> = ({
             size={16}
             color={colors.text.tertiary}
           />
-          <Text style={styles.appointmentDetailText}>
-            {appointment.child?.full_name}
-          </Text>
+          <Text style={styles.appointmentDetailText}>{childName}</Text>
         </View>
         <View style={styles.appointmentDetail}>
           <Ionicons

@@ -68,17 +68,35 @@ export const childrenService = {
   async uploadAvatar(childId: string, uri: string): Promise<string> {
     const fileName = `children/${childId}/${Date.now()}.jpg`;
 
-    // Convert file to ArrayBuffer (fetch().blob() doesn't work in React Native)
-    const arrayBuffer = await imageUtils.fileToArrayBuffer(uri);
+    // Get session token for direct upload
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData?.session?.access_token;
 
-    const { error: uploadError } = await supabase.storage
-      .from('avatars')
-      .upload(fileName, arrayBuffer, {
-        contentType: 'image/jpeg',
-        upsert: true,
-      });
+    if (token) {
+      // Use efficient direct upload (doesn't load file into memory)
+      const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL!;
+      const uploadResult = await imageUtils.uploadToSupabase(
+        uri,
+        supabaseUrl,
+        'avatars',
+        fileName,
+        token
+      );
 
-    if (uploadError) throw uploadError;
+      if (!uploadResult.success) {
+        throw new Error(uploadResult.error || 'Upload failed');
+      }
+    } else {
+      // Fallback to ArrayBuffer method if no token
+      const arrayBuffer = await imageUtils.fileToArrayBuffer(uri);
+      const { error: uploadError } = await supabase.storage
+        .from('avatars')
+        .upload(fileName, arrayBuffer, {
+          contentType: 'image/jpeg',
+          upsert: true,
+        });
+      if (uploadError) throw uploadError;
+    }
 
     const { data } = supabase.storage
       .from('avatars')

@@ -1,6 +1,8 @@
 import { supabase } from '@/lib/supabase';
 import type { DoctorProfile, DoctorAvailabilityRule, DoctorTimeOff, AppointmentSlot, Profile } from '@/types';
 
+const DEV_MODE = process.env.EXPO_PUBLIC_DEV_MODE === 'true';
+
 export type DoctorWithProfile = DoctorProfile & { profile: Profile };
 
 export const doctorsService = {
@@ -48,6 +50,48 @@ export const doctorsService = {
       .single();
 
     if (error && error.code !== 'PGRST116') throw error;
+    return data;
+  },
+
+  async createDoctorProfile(
+    profileId: string,
+    doctorData: {
+      state_registrations: { state: string; registration_number: string }[];
+      mbbs_institute: string;
+      mbbs_institute_other?: string;
+      md_institute?: string;
+      md_institute_other?: string;
+      experience_years?: number;
+      bio?: string;
+    }
+  ): Promise<DoctorProfile> {
+    // Get the primary registration number from the first state registration
+    const primaryRegistration = doctorData.state_registrations[0];
+
+    const { data, error } = await supabase
+      .from('doctor_profiles')
+      .insert({
+        profile_id: profileId,
+        specialization: 'Pediatrics', // Default for this app
+        qualification: doctorData.mbbs_institute === 'Other'
+          ? doctorData.mbbs_institute_other
+          : doctorData.mbbs_institute,
+        registration_number: primaryRegistration?.registration_number || '',
+        experience_years: doctorData.experience_years || 0,
+        consultation_fee: 500, // Default fee, can be updated later
+        bio: doctorData.bio || '',
+        languages: ['English', 'Hindi'], // Default, can be updated later
+        verification_status: DEV_MODE ? 'approved' : 'pending',
+        state_registrations: doctorData.state_registrations,
+        mbbs_institute: doctorData.mbbs_institute,
+        mbbs_institute_other: doctorData.mbbs_institute_other,
+        md_institute: doctorData.md_institute,
+        md_institute_other: doctorData.md_institute_other,
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
     return data;
   },
 

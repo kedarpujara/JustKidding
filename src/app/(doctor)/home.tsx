@@ -4,7 +4,7 @@ import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
-import { Card, Avatar, Badge, Loading, EmptyState, Button } from '@/components/ui';
+import { Card, Avatar, Loading, EmptyState } from '@/components/ui';
 import { useAuthStore } from '@/stores/authStore';
 import { appointmentsService, doctorsService } from '@/services';
 import { dateUtils } from '@/utils/date';
@@ -22,15 +22,25 @@ export default function DoctorHome() {
     enabled: !!userId,
   });
 
-  const { data: todaysAppointments = [], isLoading } = useQuery({
-    queryKey: ['todaysAppointments', doctorProfile?.id],
-    queryFn: () => appointmentsService.getTodaysAppointments(doctorProfile!.id),
+  const { data: upcomingAppointments = [], isLoading } = useQuery({
+    queryKey: ['upcomingAppointments', doctorProfile?.id],
+    queryFn: () => appointmentsService.getDoctorUpcomingAppointments(doctorProfile!.id),
     enabled: !!doctorProfile?.id,
   });
 
-  const nextAppointment = todaysAppointments.find(a => a.status === 'scheduled');
-  const completedToday = todaysAppointments.filter(a => a.status === 'completed').length;
-  const pendingToday = todaysAppointments.filter(a => a.status === 'scheduled').length;
+  // Get today's appointments for stats
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+
+  const todaysAppointments = upcomingAppointments.filter(a => {
+    const scheduledDate = new Date(a.scheduled_at);
+    return scheduledDate >= today && scheduledDate < tomorrow;
+  });
+
+  const pendingToday = todaysAppointments.filter(a => a.status === 'scheduled' || a.status === 'pending_payment').length;
+  const totalUpcoming = upcomingAppointments.length;
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -54,63 +64,22 @@ export default function DoctorHome() {
         <View style={styles.statsRow}>
           <Card style={styles.statCard}>
             <Text style={styles.statValue}>{pendingToday}</Text>
-            <Text style={styles.statLabel}>Pending</Text>
+            <Text style={styles.statLabel}>Today</Text>
           </Card>
           <Card style={styles.statCard}>
-            <Text style={styles.statValue}>{completedToday}</Text>
-            <Text style={styles.statLabel}>Completed</Text>
+            <Text style={styles.statValue}>{totalUpcoming}</Text>
+            <Text style={styles.statLabel}>Upcoming</Text>
           </Card>
           <Card style={styles.statCard}>
             <Text style={styles.statValue}>{todaysAppointments.length}</Text>
-            <Text style={styles.statLabel}>Total</Text>
+            <Text style={styles.statLabel}>This Week</Text>
           </Card>
         </View>
 
-        {/* Next Appointment */}
-        {nextAppointment && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Next Appointment</Text>
-            <Card style={styles.nextAppointmentCard}>
-              <View style={styles.appointmentHeader}>
-                <Avatar name={nextAppointment.child?.full_name || 'Patient'} source={nextAppointment.child?.avatar_url} size="lg" />
-                <View style={styles.appointmentInfo}>
-                  <Text style={styles.patientName}>{nextAppointment.child?.full_name}</Text>
-                  <Text style={styles.appointmentTime}>
-                    {dateUtils.formatTime(nextAppointment.scheduled_at)}
-                  </Text>
-                </View>
-                <Badge label="Upcoming" variant="info" />
-              </View>
-              {nextAppointment.chief_complaint && (
-                <View style={styles.complaintContainer}>
-                  <Text style={styles.complaintLabel}>Chief Complaint:</Text>
-                  <Text style={styles.complaintText}>{nextAppointment.chief_complaint}</Text>
-                </View>
-              )}
-              <View style={styles.appointmentActions}>
-                <Button
-                  title="View Intake"
-                  variant="outline"
-                  size="sm"
-                  onPress={() => router.push(`/(doctor)/appointment/${nextAppointment.id}/intake`)}
-                  style={styles.actionButton}
-                />
-                <Button
-                  title="Start Call"
-                  size="sm"
-                  onPress={() => router.push(`/(doctor)/video/${nextAppointment.id}`)}
-                  style={styles.actionButton}
-                  icon={<Ionicons name="videocam" size={16} color={colors.white} />}
-                />
-              </View>
-            </Card>
-          </View>
-        )}
-
-        {/* Today's Schedule */}
+        {/* Upcoming Appointments */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Today's Schedule</Text>
+            <Text style={styles.sectionTitle}>Upcoming Appointments</Text>
             <TouchableOpacity onPress={() => router.push('/(doctor)/schedule')}>
               <Text style={styles.seeAllText}>See All</Text>
             </TouchableOpacity>
@@ -118,16 +87,16 @@ export default function DoctorHome() {
 
           {isLoading ? (
             <Loading />
-          ) : todaysAppointments.length === 0 ? (
+          ) : upcomingAppointments.length === 0 ? (
             <Card style={styles.emptyCard}>
               <EmptyState
                 icon="calendar-outline"
-                title="No appointments today"
-                description="Enjoy your day off!"
+                title="No upcoming appointments"
+                description="When patients book, they'll appear here."
               />
             </Card>
           ) : (
-            todaysAppointments.map((appointment) => (
+            upcomingAppointments.slice(0, 5).map((appointment) => (
               <AppointmentItem
                 key={appointment.id}
                 appointment={appointment}
@@ -155,12 +124,12 @@ interface AppointmentItemProps {
 
 const AppointmentItem: React.FC<AppointmentItemProps> = ({ appointment, onPress }) => {
   const statusConfig = {
-    scheduled: { color: colors.primary[500], bg: colors.primary[100] },
-    live: { color: colors.secondary[500], bg: colors.secondary[100] },
-    completed: { color: colors.neutral[500], bg: colors.neutral[100] },
-    canceled: { color: colors.error[500], bg: colors.error[100] },
-    no_show: { color: colors.error[500], bg: colors.error[100] },
-    pending_payment: { color: colors.accent[500], bg: colors.accent[100] },
+    scheduled: { color: colors.primary[500], bg: colors.primary[100], label: 'Confirmed' },
+    live: { color: colors.secondary[500], bg: colors.secondary[100], label: 'Live' },
+    completed: { color: colors.neutral[500], bg: colors.neutral[100], label: 'Done' },
+    canceled: { color: colors.error[500], bg: colors.error[100], label: 'Cancelled' },
+    no_show: { color: colors.error[500], bg: colors.error[100], label: 'No Show' },
+    pending_payment: { color: colors.accent[500], bg: colors.accent[100], label: 'Pending' },
   };
 
   const config = statusConfig[appointment.status];
@@ -171,14 +140,21 @@ const AppointmentItem: React.FC<AppointmentItemProps> = ({ appointment, onPress 
         <Text style={[styles.timeText, { color: config.color }]}>
           {dateUtils.formatTime(appointment.scheduled_at)}
         </Text>
+        <Text style={[styles.dateText, { color: config.color }]}>
+          {dateUtils.formatDate(appointment.scheduled_at, 'dd MMM')}
+        </Text>
       </View>
       <View style={styles.appointmentItemContent}>
-        <Text style={styles.appointmentPatient}>{appointment.child?.full_name}</Text>
+        <Text style={styles.appointmentPatient}>
+          {appointment.child?.full_name || appointment.child_name || 'Unknown Patient'}
+        </Text>
         <Text style={styles.appointmentComplaint} numberOfLines={1}>
           {appointment.chief_complaint || 'No complaint specified'}
         </Text>
       </View>
-      <Ionicons name="chevron-forward" size={20} color={colors.neutral[400]} />
+      <View style={[styles.statusBadge, { backgroundColor: config.bg }]}>
+        <Text style={[styles.statusText, { color: config.color }]}>{config.label}</Text>
+      </View>
     </TouchableOpacity>
   );
 };
@@ -258,51 +234,6 @@ const styles = StyleSheet.create({
     fontWeight: fontWeights.medium,
     color: colors.primary[600],
   },
-  nextAppointmentCard: {
-    padding: spacing.lg,
-  },
-  appointmentHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: spacing.md,
-  },
-  appointmentInfo: {
-    flex: 1,
-    marginLeft: spacing.md,
-  },
-  patientName: {
-    fontSize: fontSizes.base,
-    fontWeight: fontWeights.semibold,
-    color: colors.text.primary,
-  },
-  appointmentTime: {
-    fontSize: fontSizes.sm,
-    color: colors.text.secondary,
-    marginTop: spacing.xs,
-  },
-  complaintContainer: {
-    backgroundColor: colors.neutral[50],
-    padding: spacing.md,
-    borderRadius: borderRadius.lg,
-    marginBottom: spacing.md,
-  },
-  complaintLabel: {
-    fontSize: fontSizes.xs,
-    fontWeight: fontWeights.medium,
-    color: colors.text.tertiary,
-    marginBottom: spacing.xs,
-  },
-  complaintText: {
-    fontSize: fontSizes.sm,
-    color: colors.text.primary,
-  },
-  appointmentActions: {
-    flexDirection: 'row',
-    gap: spacing.md,
-  },
-  actionButton: {
-    flex: 1,
-  },
   emptyCard: {
     padding: spacing.xl,
   },
@@ -323,6 +254,20 @@ const styles = StyleSheet.create({
   timeText: {
     fontSize: fontSizes.sm,
     fontWeight: fontWeights.semibold,
+  },
+  dateText: {
+    fontSize: fontSizes.xs,
+    marginTop: 2,
+  },
+  statusBadge: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: borderRadius.md,
+    marginLeft: spacing.sm,
+  },
+  statusText: {
+    fontSize: fontSizes.xs,
+    fontWeight: fontWeights.medium,
   },
   appointmentItemContent: {
     flex: 1,

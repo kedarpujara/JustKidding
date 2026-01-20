@@ -11,9 +11,9 @@ const TEST_PASSWORD = 'TestPass123!';
 const TEST_USERS = [
   { email: 'guardian1@test.justkidding.app', name: 'Priya Sharma', role: 'guardian' },
   { email: 'guardian2@test.justkidding.app', name: 'Rahul Patel', role: 'guardian' },
-  { email: 'doctor1@test.justkidding.app', name: 'Dr. Anjali Desai', role: 'doctor' },
-  { email: 'doctor2@test.justkidding.app', name: 'Dr. Vikram Singh', role: 'doctor' },
-  { email: 'doctor3@test.justkidding.app', name: 'Dr. Meera Krishnan', role: 'doctor' },
+  { email: 'doctor1@test.justkidding.app', name: 'Anjali Desai', role: 'doctor' },
+  { email: 'doctor2@test.justkidding.app', name: 'Vikram Singh', role: 'doctor' },
+  { email: 'doctor3@test.justkidding.app', name: 'Meera Krishnan', role: 'doctor' },
   { email: 'kedar@justkidding.app', name: 'Kedar Pujara', role: 'admin' },
   { email: 'malav@justkidding.app', name: 'Malav Shah', role: 'admin' },
 ];

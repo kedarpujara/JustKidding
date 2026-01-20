@@ -1,0 +1,72 @@
+ACCOUNT DELETION REQUEST
+
+JustKidding - Pediatric Telemedicine App
+
+Last Updated: January 2026
+
+HOW TO REQUEST ACCOUNT DELETION
+
+If you wish to delete your JustKidding account and all associated data, you can do so using one of the following methods:
+
+1. IN-APP DELETION (Recommended)
+   - Open the JustKidding app
+   - Navigate to Settings > Account
+   - Tap "Delete Account"
+   - Confirm your request
+   - Your account will be scheduled for deletion
+
+2. EMAIL REQUEST
+   - Send an email to: [Your Support Email]
+   - Subject: Account Deletion Request
+   - Include the following information:
+     * Registered phone number
+     * Full name of the account holder
+     * Reason for deletion (optional)
+   - You will receive a confirmation within 48 hours
+
+WHAT DATA WILL BE DELETED
+
+Upon account deletion, the following data will be permanently removed:
+
+- Guardian/Parent profile information (name, phone, email, address)
+- Child/Patient profiles and information
+- Profile pictures and uploaded files
+- Appointment history
+- Payment transaction records (excluding legally required records)
+- Push notification tokens
+- All associated preferences and settings
+
+DATA THAT MAY BE RETAINED
+
+In compliance with healthcare regulations and legal requirements, certain data may be retained:
+
+- Medical consultation records and prescriptions (as required by healthcare regulations)
+- Transaction records required for tax/accounting purposes
+- Data required to comply with legal obligations
+
+Retained data will be anonymized where possible and kept only for the minimum period required by law.
+
+PROCESSING TIME
+
+- In-app deletion: Processed within 7 days
+- Email requests: Processed within 30 days
+
+CONSEQUENCES OF ACCOUNT DELETION
+
+Please note that account deletion is permanent and irreversible. After deletion:
+
+- You will lose access to all consultation history
+- You will no longer be able to access previous prescriptions through the app
+- Any upcoming appointments will be cancelled
+- You will need to create a new account to use JustKidding services again
+
+CONTACT US
+
+If you have any questions about the account deletion process, please contact us:
+
+Email: [Your Support Email]
+Address: [Your Business Address]
+
+---
+
+This document is provided to comply with Google Play Store data deletion requirements.

@@ -44,10 +44,7 @@ export default function DoctorLayout() {
       <Tabs.Screen
         name="patients"
         options={{
-          title: 'Patients',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="people-outline" size={size} color={color} />
-          ),
+          href: null, // Hide from tab bar - accessible from other screens
         }}
       />
       <Tabs.Screen
@@ -66,6 +63,30 @@ export default function DoctorLayout() {
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="person-outline" size={size} color={color} />
           ),
+        }}
+      />
+      <Tabs.Screen
+        name="onboarding"
+        options={{
+          href: null, // Hide from tab bar
+        }}
+      />
+      <Tabs.Screen
+        name="availability"
+        options={{
+          href: null, // Hide from tab bar - accessed from schedule
+        }}
+      />
+      <Tabs.Screen
+        name="patient/[id]"
+        options={{
+          href: null, // Hide from tab bar - dynamic route
+        }}
+      />
+      <Tabs.Screen
+        name="appointment/[id]"
+        options={{
+          href: null, // Hide from tab bar - dynamic route
         }}
       />
     </Tabs>
